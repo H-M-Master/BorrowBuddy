@@ -1,0 +1,12 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.Theme.BorrowBuddy" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- 主色：琥珀橙 / 暖橙 -->
+        <item name="colorPrimary">@color/color_primary</item>
+        <item name="colorOnPrimary">@color/color_on_primary</item>
+        <item name="colorPrimaryContainer">@color/color_primary_container</item>
+        <!-- Toolbar、按钮等都会跟随主色调 -->
+    </style>
+
+    <style name="Theme.BorrowBuddy" parent="Base.Theme.BorrowBuddy" />
+</resources>

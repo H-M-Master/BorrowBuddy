@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Loan Status Colors -->
+    <color name="color_overdue">#D32F2F</color>
+    <color name="color_due_default">#757575</color>
+
+    <!-- App primary theme colors: teal (蓝绿色) for calm, efficient feeling -->
+    <color name="color_primary">#00897B</color>
+    <color name="color_primary_dark">#00695C</color>
+    <color name="color_primary_container">#26A69A</color>
+    <color name="color_on_primary">#FFFFFFFF</color>
+
+    <!-- Type indicator colors -->
+    <color name="color_type_loaned">#00897B</color>
+    <color name="color_type_borrowed">#546E7A</color>
+
+    <!-- Due chip background colors -->
+    <color name="color_due_chip_normal_bg">#ECEFF1</color>
+    <color name="color_due_chip_soon_bg">#B2DFDB</color>
+    <color name="color_due_chip_overdue_bg">#FFCDD2</color>
+</resources>

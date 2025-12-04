@@ -1,0 +1,113 @@
+1. Introduction
+
+BorrowBuddy is an Android application designed to help users keep track of personal loans and borrowed items in their everyday life. In many real-world scenarios, people casually lend or borrow money, books, devices, or other belongings from friends, classmates, and family members. These transactions are often based on trust and informal agreements, and there is usually no formal record. As time passes, both sides may gradually forget the details: who owes whom, how much, for what, and when it was supposed to be returned. This easily leads to awkward conversations, broken promises, and even damage to personal relationships. BorrowBuddy aims to address this problem by providing a simple, privacy-friendly tool that runs entirely on the user’s device, allowing them to record loan information, set due dates, receive automatic reminders, and send polite reminder messages when necessary.
+
+The primary goal of this project is to implement a fully functional, user-friendly Android app that matches the original proposal’s key requirements, while also demonstrating solid use of modern Android components such as Room for local persistence, WorkManager for background scheduling, and Material Design principles for the user interface. The target users are ordinary smartphone owners who often lend or borrow things and want a lightweight way to remember these obligations without resorting to spreadsheets or note-taking apps that lack reminder capabilities. BorrowBuddy focuses on being small, focused, and offline-first: all data is stored locally, without any server or cloud backend, so the app is easy to deploy and respects user privacy.
+
+2. Requirements and Proposal Overview
+
+At the proposal stage, the project defined a set of core features and some optional extensions. The core features included maintaining a list of loans with clear distinction between “I loaned to others” and “I borrowed from others,” recording key information such as item title, person name, phone number, amount, due date, notes, and optional photos. Another core requirement was to support automatic reminders based on due dates, with local notifications indicating which items are overdue or about to become due. The proposal also specified the ability to mark loans as returned, to postpone due dates with a simple gesture, and to allow the user to send polite reminder messages to contacts through their preferred communication apps.
+
+In addition to these mandatory functions, several optional features were proposed to enhance usability and completeness. These included a home screen widget showing upcoming items and a local backup mechanism that exports and restores loan data from files. During development, the final project successfully implemented all the important core features and several optional ones, staying very close to the original proposal, while making pragmatic adjustments where necessary.
+
+3. System Design and Architecture
+
+From a high-level view, the system is organized into three main layers: the data layer, the domain and background logic layer, and the presentation layer. The data layer centers around the Room persistence library. The domain layer contains business rules and background tasks such as reminder scheduling. The presentation layer is responsible for user interaction and display, implemented with an Activity and multiple Fragments following the MVVM (Model–View–ViewModel) pattern.
+
+This layered architecture was chosen to improve separation of concerns and maintainability. Room and the repository encapsulate all database-related details, while view models expose observable state to the UI using LiveData. WorkManager is used to perform periodic background checks without requiring the app to stay in the foreground. Finally, the UI layer uses Fragments, RecyclerView, and Material components to present the data clearly and support typical Android navigation patterns.
+
+4. Data Model and Persistence
+
+The central data model of BorrowBuddy is the Loan entity, which represents a single borrowing or lending record. Each loan contains a unique identifier, a loan type (either “loaned” or “borrowed”), a status (open or returned), an item or subject title, the other person’s name and phone number, an optional photo URI, an optional amount stored as integer cents, a currency string, a due date represented as LocalDate, and metadata such as creation and update timestamps, next notification time, and lead days for reminders. The possible loan types and statuses are modeled through enums (Enums.LoanType and LoanStatus), which keeps the code readable and reduces errors from using unstructured strings or integers.
+
+Room is configured through AppDatabase, a singleton database class that registers the Loan entity and uses a Converters class to persist types such as LocalDate and enums as strings in the underlying SQLite database. This allows the application to use modern Java time APIs in memory while still storing values in a format that is compatible with SQLite. Room automatically generates the necessary code to create tables, map fields, and handle schema upgrades as long as the entity definitions and version numbers are kept consistent.
+
+Access to the database is encapsulated by LoanDao and an additional Repository class. LoanDao defines all SQL queries as abstract methods annotated with Room’s query annotations. It supports observing all open loans, filtering by type, performing text search based on the title, person name, or phone, and obtaining subsets such as overdue and upcoming loans or the top few upcoming loans used by the widget. There are both reactive LiveData queries used by the UI layer and synchronous queries used by background workers. The Repository class provides a clean interface for the rest of the app by wrapping the DAO and exposing methods for inserting, updating, and querying loans, while delegating actual database work to background threads where appropriate. Structuring data access in this way separates persistence concerns from the user interface, which is important for maintainability, testability, and future evolution.
+
+5. Core Features Implementation
+
+5.1 Loan Management
+
+Loan management is at the heart of BorrowBuddy. Users can create new loans, edit existing ones, and mark them as returned when obligations are fulfilled. The loan creation and editing flow is handled by LoanEditFragment and LoanEditViewModel. When the fragment is opened with an ID argument, it loads the corresponding Loan from the repository into a LiveData<Loan> object. If there is no ID, the view model creates a new loan with sensible defaults, such as treating it as “loaned to others” by default and hiding reminder-specific actions until the record is saved.
+
+The user can edit fields such as the title, person name, phone number, amount, due date, notes, and photo in a structured form. When the user taps the save button, the view model validates and normalizes the data (for example, converting the amount to integer cents) and then calls repository methods to insert or update the record in Room. The list screen is driven by a LoanListViewModel that observes LiveData from the repository and automatically updates the RecyclerView when data changes, ensuring a reactive and consistent experience. Marking a loan as returned is also reflected in the database by updating its status field, either from the list (via swipe gestures) or from a notification action.
+
+5.2 Local Notifications and Reminders
+
+Automatic reminders are implemented through Android’s WorkManager API, encapsulated in a class called ReminderWorker. This worker is scheduled as a periodic background task, typically once per day, and runs even when the app is not open, subject to system constraints such as battery optimization and network availability (although BorrowBuddy itself does not use the network).
+
+When the worker executes, it queries LoanDao for all open loans with non-null due dates up to a specified cutoff date, for example seven days from today. This query effectively captures loans that are either already overdue or due soon. For each such loan, the worker builds a notification. The notification’s title and message are chosen to clearly communicate the situation: “due soon” for items approaching their due date, and “overdue” for those that are already past due. The message includes the item title and a formatted due date, making it immediately clear what the user needs to pay attention to.
+
+Each notification contains two actions that support common workflows. The “Mark as returned” action is implemented through NotificationActionReceiver, a broadcast receiver that listens for a specific intent triggered by this action. When the user taps it, the receiver locates the corresponding Loan by its ID, updates its status to returned, and cancels the notification, giving instant feedback. The “Send reminder” action opens a small activity or direct share sheet that uses ShareTextBuilder to create a polite reminder message. This message takes into account whether the loan is loaned or borrowed and uses courteous language in Chinese or English, making it easier for the user to nudge the other party without sounding rude. The user can then share this text through any installed communication app, keeping BorrowBuddy flexible and respectful of user preferences.
+
+5.3 Home Screen Widget
+
+BorrowBuddy includes a home screen widget that provides a glanceable summary of upcoming loans. The widget is implemented using a provider, a service, and a factory class that work together to fetch data from Room and render it as RemoteViews. Periodically or when triggered by updates, the widget queries the database for the top few upcoming loans sorted by due date. It then displays them in a compact list on the launcher screen, using the same color scheme as the main app. This widget allows users to see at a glance which items need attention without launching the app, thereby increasing engagement and usefulness.
+
+5.4 Contacts and Photos Integration
+
+To reduce manual data entry and make records more accurate, BorrowBuddy integrates with the device’s contacts and camera. When editing a loan, the user can tap a button to pick a contact from the system address book. This requires READ_CONTACTS permission, which the app requests only when the user performs the relevant action. Once granted, the app fills in the person’s name and phone number automatically.
+
+Similarly, the app allows the user to attach a photo of the borrowed item. This can be done either by picking an existing image from the gallery or by taking a new photo with the camera. The chosen image is stored as a URI in the Loan entity, and Glide is used to load and display it efficiently in the UI. Camera usage requires the CAMERA permission, which is requested at runtime with an explanation of why the app needs it.
+
+5.5 Backup and Restore
+
+To protect against data loss, BorrowBuddy provides local backup and restore functionality accessible from the settings screen. Users can export the current set of loans to a JSON file stored on the device and later import from this file to restore their data. This feature respects the offline-first design: no remote servers are involved, and backups remain under the user’s control. The backup system complements the Room database by offering an extra layer of safety when users change devices or reinstall the app.
+
+6. User Interface and UX Design
+
+6.1 Visual Design and Theme
+
+The visual design of BorrowBuddy is built on top of the Material Design 3 guidance, with a clean teal-colored theme that aims to convey calmness and trustworthiness. The app uses a Theme.Material3.DayNight.NoActionBar base and customizes primary, secondary, and background colors to achieve a consistent look. Special colors are defined for overdue states, normal due dates, and background chips, enabling the UI to communicate status through color in a subtle but clear way.
+
+6.2 Loan List Screen
+
+The loan list screen, implemented in LoanListFragment, is the primary entry point. It uses a RecyclerView with a LoanAdapter to render each loan as a card. Tabs or toggle controls allow the user to switch between “Loaned” and “Borrowed” views. A search field lets the user filter loans by typing part of the item title, person name, or phone number. Additional filters for “all,” “overdue,” and “due this week” help the user focus on urgent items.
+
+Each list item is a CardView with a left-hand vertical color bar that indicates whether the loan is loaned or borrowed. The main title displays the item or subject, while a secondary text shows the other person’s name. On the right side, a chip-style label shows the due date or a message such as “no date set.” The background and text colors of this chip change depending on whether the loan is normal, due soon, or overdue. This visual encoding makes it easier to scan a long list and quickly identify which items require attention, without reading all the details.
+
+6.3 Loan Edit Screen
+
+The loan editing screen, LoanEditFragment, adopts a multi-card layout to structure information logically. The top card contains the loan type label and core identity fields. The loan type is shown as a pill-shaped label that clearly states whether the current record is “I loaned to others” or “I borrowed from others.” Tapping this label toggles the type, and the label’s text and background color change accordingly. This behavior is implemented by updating the Loan object in the view model using a new instance whenever the type changes, ensuring that LiveData observers always see a fresh object and that the UI updates reliably.
+
+A second card focuses on the amount and due date. It includes a numeric field for entering the amount in the user’s local currency and a chip-like date field with a calendar icon. Tapping the date opens a DatePickerDialog, allowing the user to pick a new due date easily. After selection, the text of the date field updates, and the underlying Loan object’s LocalDate field is adjusted.
+
+The third card combines photo and notes. It presents a rectangular image placeholder, two buttons for selecting a photo from the gallery or taking a photo with the camera, and a multi-line notes field. If the loan already has an associated photo URI, Glide loads and displays the image. Otherwise, the area shows a neutral placeholder background. The final card contains two horizontally arranged buttons: one for sending a reminder (which opens the system share UI with a generated polite message) and one for saving the loan. For newly created loans that have not yet been saved, the reminder button is hidden because there is nothing yet to remind.
+
+6.4 Settings Screen
+
+The settings screen is implemented as SettingsFragment and uses a similar card-based layout. One card deals with theme selection, providing a spinner for the user to choose between light mode, dark mode, and following the system setting. Internally, this updates shared preferences and affects the app’s Material theme. Another card is dedicated to backup and restore. It contains a short description of the local backup feature and two buttons for export and import. This screen is intentionally simple and focused, leaving room for additional configuration options, such as advanced reminder rules, that could be added in the future.
+
+7. Background Processing and Scheduling
+
+Background processing in BorrowBuddy is centered on WorkManager and ReminderWorker. WorkManager is chosen because it provides a consistent API for deferrable, asynchronous tasks that need guaranteed execution, even across app restarts and device reboots, while respecting system constraints and battery optimization.
+
+ReminderWorker runs periodically to evaluate which loans need reminders. It uses the synchronous DAO methods to query loans up to a certain due date, then constructs and posts notifications accordingly. The worker also ensures that each relevant loan is processed only as needed to avoid flooding the user with duplicate notifications. For development and debugging, a hidden trigger was added in MainActivity, such as a multi-tap gesture on the toolbar, which directly schedules a one-time ReminderWorker. This allows the developer to quickly test reminder logic and notifications without waiting for the periodic schedule to elapse.
+
+8. Permissions and Security Considerations
+
+BorrowBuddy uses a minimal set of permissions, all of which are directly tied to user-facing features. It requires READ_CONTACTS to allow the user to select a contact and auto-fill the name and phone number, CAMERA to enable taking photos of items, and storage or document access for reading and writing backup files where applicable. Starting from Android 13 (API level 33), it also requests POST_NOTIFICATIONS so that reminder notifications can be displayed.
+
+These permissions are requested at runtime at the moment they are needed, rather than preemptively at startup, to improve transparency and user trust. For example, contact permission is requested only when the user taps the contact picker button, and camera permission is requested only when the user attempts to take a photo. When a permission is denied, the app shows a brief explanation and guides the user to system settings if necessary. All loan data, including photos and backups, remain on the local device and are not transmitted over the network. By avoiding any remote servers or cloud storage, the app greatly reduces privacy risks and simplifies the security model.
+
+9. Testing and Evaluation
+
+Testing and evaluation of BorrowBuddy focused on verifying functional correctness, user experience, and reliability of reminders. Functionally, the app was tested by creating multiple loans with different combinations of fields: some with only a title and person name, some with amounts and due dates, some with photos, and some with notes. For each loan, the behaviors of editing, saving, marking as returned, and deleting via swipe were exercised to ensure that the Room database and the UI remained in sync. The search feature was tested with partial names, item keywords, and phone numbers to confirm that the DAO queries behaved as intended. The filter options for overdue and due-this-week were checked by adjusting due dates and observing which items appeared in the filtered views.
+
+The reminder system was tested both through the normal WorkManager schedule and through the hidden debug trigger added in MainActivity, which allows the developer to execute ReminderWorker on demand for quicker feedback. Various scenarios were simulated: loans with due dates in the past, today, and several days in the future. The resulting notifications were inspected to verify that the titles, messages, and dates were correct, and that the two actions (“Mark as returned” and “Send reminder”) worked reliably, updating the database and launching the share sheet as expected. Special attention was given to devices running Android 13 or later, where notification permission is required. On such devices, tests confirmed that if the user denies the permission, no notifications appear, but the app handles this gracefully and can request the permission again later.
+
+User experience was evaluated informally by examining how easily a new user could understand the main flows of the app. The redesigned card-based UI, the clear separation between loan types, and the color-coded due date chips all contributed to quick comprehension. The hint dialog about swipe gestures appeared only until the user chose not to see it again, which kept the interface friendly without being annoying. Performance-wise, the app remained responsive even with a moderate number of loans, thanks to RecyclerView optimizations and Room’s efficient queries.
+
+10. Limitations and Future Work
+
+Despite the successful implementation of the core features, BorrowBuddy still has some limitations and opportunities for future work. Because the app is entirely offline and stores data only on the local device, users cannot easily synchronize their loans across multiple phones or tablets. A possible extension would be to integrate an optional cloud backup or synchronization layer, for example using a simple REST backend or a cloud database.
+
+Another limitation is the absence of advanced analytics and visualization. Currently, the app shows lists and simple filters, but it does not provide charts or statistics about total amounts lent and borrowed over time, or which people are most frequently involved in loans. Adding a statistics dashboard could provide more insight and encourage responsible lending and borrowing behavior. There is also room to refine the reminder logic. At present, reminders are based primarily on due dates and a fixed lead period. In the future, the app could support multiple reminder times, user-defined reminder schedules, or smarter behavior that avoids sending notifications during user-defined quiet hours.
+
+Additionally, while the current UI is built with traditional Views and Material components, a future version could be rewritten using Jetpack Compose to take advantage of its declarative UI model and improved tooling. This would require more time and a careful migration plan but could simplify future development and enhance the visual polish even further.
+
+11. Conclusion
+
+In conclusion, BorrowBuddy fulfills its original aim of providing a practical, privacy-friendly tool for managing personal loans and borrowed items. By combining a clear data model in Room, a clean MVVM architecture with repositories and view models, and a thoughtfully designed user interface with automatic reminders and gentle sharing options, the app addresses a common yet often overlooked problem in everyday life. Users can record who they lent items or money to, track when they are supposed to be returned, and receive timely notifications before things are forgotten.
+
+The project demonstrates not only the technical skills required to build a non-trivial Android application—covering local storage, background work, notifications, widgets, and runtime permissions—but also an understanding of user experience considerations such as reducing friction, avoiding embarrassment, and supporting polite communication. Although there are many possible enhancements and future directions, the current version of BorrowBuddy already stands as a complete, coherent application that closely matches the initial proposal and is ready for real-world use.

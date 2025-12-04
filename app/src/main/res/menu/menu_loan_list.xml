@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/menu_filter"
+        android:title="@string/filter"
+        android:icon="@android:drawable/ic_menu_sort_by_size" 
+        app:showAsAction="ifRoom">
+        <menu>
+            <item
+                android:id="@+id/filter_all"
+                android:title="@string/filter_all" />
+            <item
+                android:id="@+id/filter_overdue"
+                android:title="@string/filter_overdue" />
+            <item
+                android:id="@+id/filter_due_this_week"
+                android:title="@string/filter_due_this_week" />
+        </menu>
+    </item>
+    <item
+        android:id="@+id/action_settings"
+        android:title="@string/settings"
+        android:icon="@android:drawable/ic_menu_preferences"
+        app:showAsAction="never" />
+</menu>
